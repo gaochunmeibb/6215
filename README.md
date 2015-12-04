@@ -73,58 +73,73 @@ loadings(fit)
 fit$scores[1:10,]
 plot(fit,type="lines")
 ```
-library(rpart)
-df$y_rf<-as.factor(df$y)
-kdd_randomForest_v1 <- randomForest(y_rf~school_latitude+
-                      school_longitude+
-                      school_metro+
-                      teacher_prefix+
-                      teacher_teach_for_america+
-                      teacher_ny_teaching_fellow+
-                      total_price_excluding_optional_support+
-                      students_reached_imp+
-                      eligible_double_your_impact_match+
-                      eligible_almost_home_match+
-                      poverty_level+
-                      primary_focus_area+
-                      resource_type+
-                      essay_length+
-                      title_length+
-                      title_y_pp+
-                      essay_y_pp+                      
-                      agg_item_amount_total+
-                      agg_cnt+                 
-                      books_cnt+
-                      books_item_amount_total+
-                      supplies_item_amount_total+
-                      other_item_amount_total+
-                      tech_item_amount_total+
-                      teacher_acctid_cnt+
-                      schoolid_cnt+
-                      teacher_acctid_y_prev_rate_cred+
-                      schoolid_y_prev_rate_cred_cap+ 
-                      school_district_y_prev_rate+                    
-                      school_county_y_prev_rate+
-                      schoolid_y2_prev_rate+                 
-                      teacher_acctid_y2_prev_rate+                            
-                      schoolid_y3_prev_rate+                 
-                      teacher_acctid_y3_prev_rate+                            
-                      school_district_y3_prev_rate+
-                      schoolid_y4_prev_rate+                                        
-                      schoolid_y5_prev_rate+                 
-                      teacher_acctid_y5_prev_rate+
-                      schoolid_y11_prev+
-                      teacher_acctid_y11_prev+
-                      schoolid_y12_prev+
-                      teacher_acctid_y12_prev+
-                      schoolid_y13_prev+
-                      teacher_acctid_y13_prev,                
-                    data = df[split,],
-                   na.action = na.roughfix)
-summary(kdd_randomForest_v1)
-df$pred_randomForest<- predict(kdd_randomForest_v1, newdata=df, n.trees=650, type="response")
-summary(df$pred_gbm)
-df_test_randomForest <- df[df$split=="test",c("projectid","pred_randomForest")]
-names(df_test_randomForest)[names(df_test_randomForest)=="pred_randomForest"] <- "is_exciting"
+
+
+
+
+twins3=twins[,-c(1,3,4,5,6)]
+head(twins3)
+df1=twins3[c(twins3$sex==1),]
+head(df1)
+df2=twins3[c(twins3$sex==2),]
+z1=df1[,2:6]
+z2=df2[,2:6]
+#using t-test to see whether there exists significant
+#difference of mean between the sexes.
+x1bar=colMeans(z1)
+x2bar=colMeans(z2)
+n1=nrow(z1)
+n2=nrow(z2)
+p=5
+
+S1=var(z1)
+S2=var(z2)
+Spool=((n1-1)*S1+(n2-1)*S2)/(n1+n2-2)
+T2=t(x1bar-x2bar)%*%solve((S1/n1+S2/n2))%*%(x1bar-x2bar)
+T2
+#[1,] 442.6469
+c2 = (n1+n2-2)*p*qf(df1=p,df2=n1+n2-p-1,0.96)/(n1+n2-p-1)
+c2
+#[1] 11.7024
+pval = 1-pf(T2*(n1+n2-p-1)/((n1+n2-2)*p), p, n1+n2-p-1)
+pval
+#[1,]    0
+
+#Since T2>c2, the conclusion could be drawn that there exists significant
+#difference between different sexes.
+
+#using ANOVA 
+twin[1:10,]
+twin2[1:10,]
+head(twin2)
+x=twin2[,7:11]
+y=twin2[,12:16]
+colMeans(twin2)
+d=(x+y)/2
+d=as.matrix(d)
+sex=as.factor(twin2$sex)
+zygosity=as.factor(twin2$zygosity)
+
+fit=manova(d~sex*zygosity)
+summary(fit)
+
+#Df   Pillai approx F num Df den Df Pr(>F)    
+#sex            1 0.272730   62.326      5    831 <2e-16 ***
+#  zygosity       1 0.009962    1.672      5    831 0.1387    
+#sex:zygosity   1 0.004803    0.802      5    831 0.5483    
+#Residuals    835                                           
+#---
+#  Signif. codes:  0 °Æ***°Ø 0.001 °Æ**°Ø 0.01 °Æ*°Ø 0.05 °Æ.°Ø 0.1 °Æ °Ø 1
+
+
+
+
+
+twins2=read.csv("C:/Users/lyf/Desktop/twins-in-rows2.csv")
+twins2=twins2[,-1]
+dat.dist <- dist(twins2,method = "euclidean")
+dat.hclust3 <- hclust(dat.dist, method="complete")
+plot(dat.hclust3)
+
 names(df_test_randomForest)
 write.csv(df_test_randomForest[,c("projectid","is_exciting")],"model1.csv",row.names=F)
