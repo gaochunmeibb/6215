@@ -76,7 +76,6 @@ plot(fit,type="lines")
 
 
 
-
 twins3=twins[,-c(1,3,4,5,6)]
 head(twins3)
 df1=twins3[c(twins3$sex==1),]
