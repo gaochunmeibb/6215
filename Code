@@ -1,0 +1,614 @@
+---
+title: "6215twin"
+author: "Chunmei Gao"
+date: "December 5, 2015"
+output: html_document
+---
+```{r}
+library(ggplot2)
+library(plyr) # for rename
+library(corrplot)
+
+# load the data
+twins <- read.csv("~/Documents/6215-Applied Multivariance Model/project/nmtwins.csv")
+names(twins)
+```
+
+
+```{r}
+#seperate the data into two groups
+#identical <- twins[twins$zygosity==1,]
+#fraternal <- twins[twins$zygosity==2,]
+
+# describe the data:
+#histgram
+hist(twins$sex)
+hist(twins$zygosity)
+hist(twins$moed)
+hist(twins$faed)
+hist(twins$faminc)
+hist(twins$english)
+
+table(twins$moed)
+qplot(twins$moed, geom="histogram",main = "mother education", xlab = "mother education",xlim=c(0,7)) 
+
+#boxplot
+boxplot(twins$english~twins$zygosity,data=twins, main="Twins", 
+  	xlab="zygosity", ylab="English")
+boxplot(twins$math~twins$moed,data=twins, main="Twins", 
+  	xlab="mother education", ylab="English")
+odd <- seq(1, by = 2, len = 839)
+# checking the fraternal twins sex
+same_zygosity <- c()
+for(i in 1:839){
+    same_zygosity[i] <- twins[(2*i-1),"zygosity"]!=twins[2*i,"zygosity"]
+}
+sum(same_zygosity ) # if sum is 0, means all two twins in a pair have the same zygosity
+
+# from the result we can see that if two people are twins, their sex, zygosity, mother education, father education, family income are the same. Except sex, other variables are reasonalble to be the same for a pair of twins as we assume the pair of twins are in the same family environment. 
+```
+
+```{r}
+# missing data: random sample impute
+sum(is.na(twins$moed)) # 38/1678 is missing. Only 19 pairs is missing
+
+hist(twins$faed)
+sum(is.na(twins$faed)) # 48/1678  is missing. Only 24 pairs are missing
+
+hist(twins$faminc)
+sum(is.na(twins$faminc)) #124/1678  is missing. Only 62 pairs are missing
+
+# missing value impute sampling in probability. Instead using the mean or mode for imputation, missing value is imputed using the distribution of the origional data.
+# random 
+set.seed(1992)
+twins[which(is.na(twins$moed)),"moed"] <- sample(twins[-which(is.na(twins$moed)),"moed"],size = sum(is.na(twins$moed)))
+twins[which(is.na(twins$faed)),"faed"] <- sample(twins[-which(is.na(twins$faed)),"faed"],size = sum(is.na(twins$faed)))
+twins[which(is.na(twins$faminc)),"faminc"] <- sample(twins[-which(is.na(twins$faminc)),"faminc"],size = sum(is.na(twins$faminc)))
+```
+
+
+```{r}
+# checking normality distribution for each score variables for the assumption of 
+qqnorm(twins$english)
+qqline(twins$english, col="red")
+
+qqnorm(twins$math)
+qqline(twins$math, col="red")
+
+qqnorm(twins$socsci)
+qqline(twins$socsci, col="red")
+
+qqnorm(twins$natsci)
+qqline(twins$natsci, col="red")
+
+qqnorm(twins$vocab)
+qqline(twins$vocab, col="red")
+# from the qq plot for each score variables, we didint see a significant diviation from normal distribution.
+
+
+# test multivariate normal distribution: QQ plot(for sigle variable)  Chi-square (for multi variables)
+source("http://www.stat.wmich.edu/wang/561/codes/R/chisqplot.R")
+chisqplot(twins[,7:11]) 
+# a few points above the line indicate light positive skewness. 
+## why the multi-normal has some divations? correlation? outlier?
+# To check the observation with large distances are outliers or mistake filling.
+
+ #This is an example for positive skewness looks like in histogram and QQ plot
+ N <- 10000
+ x <- rnbinom(N, 10, .5)
+ hist(x, 
+ xlim=c(min(x),max(x)), probability=T, nclass=max(x)-min(x)+1, 
+   col='lightblue', xlab=' ', ylab=' ', axes=F,
+   main='Positive Skewed')
+lines(density(x,bw=1), col='red', lwd=3)
+ chisqplot(x)
+ 
+ 
+# squared generalized distances
+score <- twins[,7:11]
+mean <- colMeans(score)
+S=cov(score)
+S.inv=solve(S)
+ssd=matrix(1:nrow(twins),nrow=1)
+n <- nrow(twins)
+for(i in 1:n)
+{ssd[i]=as.matrix(score[i,]-mean)%*%as.matrix(S.inv)%*%t(score[i,]-mean)}
+# from the chi-square plot, we can see that diviation stars after squared generalized distances is greater than 15.So we find the corresponding score.
+
+qchi=c(1:n)
+for(i in 1:n)
+{qchi[i]=qchisq(p=((i-1/2)/n),df=5)}
+
+ssdsort <- sort.int(ssd,index.return = TRUE)
+distance <- ssdsort$x-qchi
+hist(distance)
+which(ssdsort$x-qchi>2)
+(ssdsort$ix[c(1661,1668,1669,1670,1671,1675,1676,1677)]) # shows which observation has large distance
+ssdsort$x[c(1144, 1501,  114,  943,   21,  113, 1142,  645)] # shows squared generalized distances of observation large form chisquare distance
+
+twins$Colour="black"
+# Set new column values to appropriate colours
+twins$Colour[c(1661,1668,1669,1670,1671,1675,1676,1677)]="red"
+plot(ssdsort$x~qchi, col=twins$Colour)
+
+score[c(1144, 1501,  114,  943,   21,  113, 1142,  645),]# shows the score  
+
+# Also , we calculate the 95% confidence interval of mean score to see whether the potential outlier is out of 95% confidence interval(2 standard distance from the mean)
+lower <- mean-2*sqrt(diag(S))
+higher <- mean+2*sqrt(diag(S))
+(score[c(1144, 1501,  114,  943,   21,  113, 1142,  645),]<lower)+(score[c(1144, 1501,  114,  943,   21,  113, 1142,  645),]>higher)
+# except 1144,113, all others people's at least one score is out of 95% CI. There is no evidence that they are misfilling. We cannot directly delete them. 
+
+twins$Colour="black"
+# Set new column values to appropriate colours
+twins$Colour[c(1661,1675)]="red" # 1661,1675 corespond to the two observation(1144,113) whose score is not falling outside the 95%CI
+plot(ssdsort$x~qchi, col=twins$Colour)
+score[c(1144,113),]
+##????
+twins$Colour <- NULL # remove the color attribute
+```
+
+
+```{r}
+###outlier
+score=as.matrix(score)
+family=as.matrix(family)
+fit=lm(score~family)
+summary(fit)
+install.packages("outliers")
+library(outliers)
+plot(fit,which=4)
+chisq.out.test(score,variance=var(score), opposite=FALSE)
+
+fit <- lm(english~sex+moed+faed+zygosity,data=twins)
+# Assessing Outliers
+outlierTest(fit) # Bonferonni p-value for most extreme obs
+qqPlot(fit, main="QQ Plot") #qq plot for studentized resid 
+leveragePlots(fit) # leverage plots
+
+```
+
+
+
+```{r}
+##### Important: we have to calculate the mean score of each pair of twins. Because each observation is not independent. otherwise the variance matrix can not be inversed. Like assume a pair of twins is one person. 
+index=rep(c(1,2),times=839)# 1678/2
+twins=data.frame(twins,index)
+twins_young=twins[twins$index==1,]
+twins_old=twins[twins$index==2,]
+twins_pair_raw <- data.frame(twins_young,twins_old)
+twins_pair_raw2=twins_pair_raw[,-c(12,13,14,15,16,17,18,24)]
+twins_pair<- rename(twins_pair_raw2,c("sex.1"="sex2","moed.1"="moed2","faed.1"="faed2", "faminc.1"="faminc2","english.1" = "english2", "math.1" = "math2", "socsci.1" = "socsci2","natsci.1"="natsci2", "vocab.1"="vocab2"))
+mean_English <- c()
+mean_math <- c()
+mean_socsci <- c()
+mean_natsci <- c()
+mean_vocab <- c()
+for(i in 1:nrow(twins_pair)){
+    mean_English[i] <- (twins_pair[i,"english"] + twins_pair[i,"english2"])/2
+    mean_math[i] <- (twins_pair[i,"math"] + twins_pair[i,"math2"])/2
+    mean_socsci[i] <- (twins_pair[i,"socsci"] + twins_pair[i,"socsci2"])/2
+    mean_natsci[i] <- (twins_pair[i,"natsci"] + twins_pair[i,"natsci2"])/2
+    mean_vocab[i] <- (twins_pair[i,"vocab"] + twins_pair[i,"vocab2"])/2
+}
+twins_pair <- data.frame(twins_pair,mean_English,mean_math,mean_socsci,mean_natsci,mean_vocab)
+names(twins_pair)
+#[1] "pairnum"      "sex"          "zygosity"     "moed"         "faed"         "faminc"      
+# [7] "english"      "math"         "socsci"       "natsci"       "vocab"        "english2"    
+# [13] "math2"        "socsci2"      "natsci2"      "vocab2"       "mean_English" "mean_math"   
+# [19] "mean_socsci"  "mean_natsci"  "mean_vocab"  
+twins_pair[1:5,]
+```
+
+
+
+```{r}
+#sex/gender: different sex can cause score difference? Now we are viewing the mean_score as generated by independent indivaidual. There is no twin effects.
+
+# we can check the covariance matrix equality CH 6 textbook page310
+# one of the assumption made when comparing two or more multivariate mean vectors is the covariance matrics of the potentially different group are the same
+# H0: equal covariance matrices
+# test: Box's M-test  (testbook page310)
+#install.packages("biotools")
+library(biotools)
+twins_pair[2:6,17:21]
+boxM(twins_pair[,17:21],twins_pair[,2]) # test different sex groups have same covariance matrix.
+# result: Chi-Sq (approx.) = 12.2032, df = 15, p-value = 0.6636
+# P-value is greater than 0.5 which indicate that there is no enough evidence to reject the Null hypothsis.
+
+# two population groups: female and male
+# compare these two groups mean score difference
+# assumption: 1. the group covariance are equal according to the Box's M-test result
+# asummption: 2 both population are multivairate normal
+# H0: mu1-mu2=0     page 285
+# using F-test to see whether there exists significant (ch6 page 285)
+
+# since the sample size is large,n1-p= , n2-p= , we can assume (Ch6 ppt 14) T^2 follow chi-square distribution
+twins_pair_female = twins_pair[twins_pair$sex==2,] # 976 
+twins_pair_male = twins_pair[twins_pair$sex==1,] #702
+x1bar = colMeans(twins_pair_female[,17:21])
+x2bar = colMeans(twins_pair_male[,17:21])
+S1 = var(twins_pair_female[,17:21])
+S2 = var(twins_pair_male[,17:21])
+n1 = nrow(twins_pair_female)
+n2 = nrow(twins_pair_male)
+twins_pair[1:5,]
+p=5
+Spool=((n1-1)*S1+(n2-1)*S2)/(n1+n2-2)
+T2=t(x1bar-x2bar)%*%solve((1/n1+1/n2)*Spool)%*%(x1bar-x2bar)
+T2 
+# [1,] 313.1292
+c2 = (n1+n2-2)*p*qf(df1=p,df2=n1+n2-p-1,0.95)/(n1+n2-p-1)
+c2
+# [1] 11.17768
+#############
+#Since T2>c2, the conclusion could be drawn that  mean score exists significant
+#difference in between different sexe groups.
+#############
+
+#Bonferroni 95% CI for mu_1-mu_2  (female-male) 
+crit = qt(1-0.05/(2*p),n1+n2-2)
+se = sqrt(diag(Spool)*(1/n1+1/n2))
+BCI = cbind((x1bar - x2bar) - crit*se, 
+	(x1bar - x2bar) + crit*se)
+colnames(BCI)=c("LB","UB")
+rownames(BCI)=c("English","math","socsci","natsci","vocab" )
+BCI
+# confidence interval show that:
+# 1. only vocabulary mean score contains 0. 
+# 2. Female will get slightly higher score in English. Male would performs better in math, social science, natual science.
+
+# Dotplot: Grouped Sorted and Colored
+# Sort by score, group and color by sex 
+x <- twins_pair[order(twins_pair$sex,twins_pair$mean_math),] # sort by mpg
+x$sex <- factor(x$sex) # it must be a factor
+x$color[x$sex==1] <- "red"
+x$color[x$sex==2] <- "blue"
+dotchart(x$mean_math,labels=row.names(x),cex=.7,groups= x$sex,
+  	main="Math score\ngrouped by sex",
+   xlab="Math score", ylab="1-male,2-female",gcolor="black", color=x$color)
+# form the plot, we can see a clear difference between male and female in mean math score. Male performs better than female.
+```
+
+```{r}
+#zygosity
+###########
+# mean score differences
+##########
+#zygosity: different type of twins (identical, fraternal) can cause mean score difference? 
+
+# we can check the covariance matrix equality CH 6 textbook page310
+# H0: different type of twins have same covariance matrix.
+boxM(twins_pair[,17:21],twins_pair[,3])
+# result: Chi-Sq (approx.) = 30.4749, df = 15, p-value = 0.01032
+# The coviance matrix in different zygosity are different
+
+# two population groups: identical(1) and fraternal(2)
+# compare these two groups mean score difference
+# assumption: 1. covariance matrix are different
+# assumption: 2. both are multi mornal 
+# H0: mu1-mu2=0     page 285
+# using F-test to see whether there exists significant (ch6 page 285)
+
+twins_pair_identical = twins_pair[twins_pair$zygosity==1,] # 976 
+twins_pair_fraternal = twins_pair[twins_pair$zygosity==2,] #702
+x1bar = colMeans(twins_pair_identical[,17:21])
+x2bar = colMeans(twins_pair_fraternal[,17:21])
+S1 = var(twins_pair_identical[,17:21])
+S2 = var(twins_pair_fraternal[,17:21])
+n1 = nrow(twins_pair_identical)
+n2 = nrow(twins_pair_fraternal)
+p=5
+T2=t(x1bar-x2bar)%*%solve((1/n1*S1+1/n2*S2))%*%(x1bar-x2bar)
+T2 
+# [1,] 8.783256
+c2 = (n1+n2-2)*p*qf(df1=p,df2=n1+n2-p-1,0.95)/(n1+n2-p-1)
+c2
+# [1] 11.17768
+#############
+#Since T2<c2, the conclusion could be drawn that there is no enough statistical evience to reject the Null. No significant difference between different type of twins.
+
+#############
+#Bonferroni 95% CI for mu_2-mu_1 
+crit = qt(1-0.05/(2*p),n1+n2-2)
+se = sqrt(diag(1/n1*S1+1/n2*S2))
+BCI = cbind((x1bar - x2bar) - crit*se, 
+	(x1bar - x2bar) + crit*se)
+colnames(BCI)=c("LB","UB")
+rownames(BCI)=c("English","math","socsci","natsci","vocab" )
+BCI
+# 0 are include in all the confidence interval.
+
+
+####################################################################################
+##the difference in absolute difference between identical twins and fraternal twins##
+####################################################################################
+twin[1:10,]
+twin2[1:10,]
+x=twin2[,7:11]
+nrow(x)
+y=twin2[,12:16]
+nrow(y)
+z=abs(x-y)#the absolute difference of scores between twins
+z
+nrow(z)
+colMeans(z)
+df=data.frame(twin2,z)#dataset we will use
+df[1:10,]
+names(df)
+z1=df[c(df$zygosity==1),17:21]#data who are identical twins
+head(z1)
+nrow(z1)##509 ∂‘Õ¨¬—À´∞˚Ã•
+z2=df[c(df$zygosity==2),17:21]#data who are not identical twins
+nrow(z2) ##330 ∂‘“Ï¬—À´∞˚Ã•
+head(z2)
+
+nrow(z1)
+nrow(z2)
+##two absokute difference comparison test
+x1bar=colMeans(z1)
+x1bar
+x2bar=colMeans(z2)
+x2bar
+n1=nrow(z1)
+n1
+n2=nrow(z2)
+n2
+p=5
+#assuming that the variance is equal within two groups
+# ch 6 ppt 4
+S1=var(z1)
+S2=var(z2)
+Spool=((n1-1)*S1+(n2-1)*S2)/(n1+n2-2)
+T2=t(x1bar-x2bar)%*%solve((1/n1+1/n2)*Spool)%*%(x1bar-x2bar)
+T2
+##[,1]
+##[1,] 118.1061
+T2a=(n1+n2-2)*p*qf(df1=p,df2=n1+n2-p-1,0.96)/(n1+n2-p-1)
+T2a 
+##[1] 11.76112
+#T2>T2a we can reject H0 that two population mean vectors are equivalen
+
+#t-Test to compare the means of two groups under the assumption that both samples are random, independent, and come from normally distributed population with unknow but equal variances
+
+#To solve this problem we must use to a Student’s t-test with two samples, assuming that the two samples are taken from populations that follow a Gaussian distribution (if we cannot assume that, we must solve this problem using the non-parametric test called Wilcoxon-Mann-Whitney test; we will see this test in a future post). Before proceeding with the t-test, it is necessary to evaluate the sample variances of the two groups, using a Fisher’s F-test to verify the homoskedasticity (homogeneity of variances). 
+var.test(as.vector(z1[1,1:10]),as.vector(z2[1,1:10]))
+#http://www.r-bloggers.com/two-sample-students-t-test-1/
+t.test(z1[1],z2[1])
+t.test(z1[2],z2[2])
+t.test(z1[3],z2[3])
+t.test(z1[4],z2[4])
+t.test(z1[5],z2[5])
+t.test(z1,z2)
+nrow(z)
+```
+
+
+```{r}
+#motheredu: different mother education can cause score difference?  
+table(twins_pair$moed)
+#  1   2   3   4   5   6 
+#  55 108 310 203 126  37 
+
+boxM(twins_pair[,17:21],twins_pair[,4])
+#	Box's M-test for Homogeneity of Covariance Matrices
+#   Chi-Sq (approx.) = 91.733, df = 75, p-value = 0.09182
+#########
+## We don't have enough evidence to reject that the six group mean score covariance matrix are the same
+#########
+
+# six population groups: 1~6
+# compare these six groups mean score difference
+# H0:     there is no mother education effect page 301-302
+# 1: X_li is distributed as N(mu+tao_l,sigma) page(297)
+# 2: covariance matrix is the same for all populations page(301)
+# 3: error_li are independent Np(0,sigma) variables
+# Anova vs. Manova
+# Why not multiple Anovas?
+# Anovas run separately cannot take into account the pattern of covariation among the dependent measures:
+# It may be possible that multiple Anovas may show no differences while the Manova brings them out
+# MANOVA is sensitive not only to mean differences but also to the direction and size of correlations among the dependents 
+
+
+# One-way MANOVA
+score <- as.matrix(twins_pair[,17:21])
+mothereducation <- as.factor(twins_pair[,4])
+manova(score~mothereducation)
+summary(manova(score~mothereducation))
+# Get a p-value for the effect of mother education on the 5 score measurements
+# Mother education has effect on mean score.
+
+# if we ignore the pattern of covariation among the dependent measures, we try 5 times one way anova:
+summary(aov(score~mothereducation))
+# P-value tells us that Mother education has effect on each mean score.
+
+# Simultanious confidence interval
+
+```
+
+```{r}
+#fatheredu
+table(twins_pair$faed)
+#  1   2   3   4   5   6 
+# 93 101 219 179 125 122 
+#fatheredu: different father education can cause score difference?  
+boxM(twins_pair[,17:21],twins_pair[,5])
+# Box's M-test for Homogeneity of Covariance Matrices
+# results: Chi-Sq (approx.) = 92.1389, df = 75, p-value = 0.08714
+# same covariance matrix
+
+score <- as.matrix(twins_pair[,17:21])
+fathereducation <- as.factor(twins_pair[,5])
+manova(score~fathereducation)
+summary(manova(score~fathereducation))
+# Get a p-value for the effect of father education on the 5 score measurements
+# father education has effect on mean score.
+
+#CI
+```
+
+```{r}
+#family income
+table(twins_pair$faminc)
+#  1   2   3   4   5   6   7 
+# 99 213 177 199  83  25  43 
+#fatheredu: different father education can cause score difference?  
+boxM(twins_pair[,17:21],twins_pair[,6])
+# Box's M-test for Homogeneity of Covariance Matrices
+# Chi-Sq (approx.) = 95.569, df = 90, p-value = 0.3241
+familyincome <- as.factor(twins_pair[,6])
+manova(score~familyincome)
+summary(manova(score~familyincome))
+# Get a p-value for the effect of family income on the 5 score measurements
+# family income has effect on mean score.
+
+#CI
+```
+
+
+```{r}
+# interaction: using MANOVA 
+sex=as.factor(twins_pair$sex)
+zygosity=as.factor(twins_pair$zygosity)
+moedu=as.factor(twins_pair$moed)
+faedu=as.factor(twins_pair$faed)
+faminc=as.factor(twins_pair$faminc)
+score <- as.matrix(twins_pair[,17:21])
+
+# interaction: sex*zygosity
+fit=manova(score~sex*zygosity)
+summary(fit)
+# no zygosity effect or intercation
+
+# intercation: sex*family income
+fit=manova(score~sex*faminc)
+summary(fit)
+# no intercation effect
+
+# intercation: sex*moedu
+fit=manova(score~sex*moedu)
+summary(fit)
+# no intercation effect
+
+# intercation: sex*faedu
+fit=manova(score~sex*faedu)
+summary(fit)
+# no intercation effect
+
+# intercation: zygosity*moedu
+fit=manova(score~moedu*zygosity)
+summary(fit)
+# no intercation effect or zygosity
+
+# intercation: zygosity*moedu
+fit=manova(score~zygosity*faedu)
+summary(fit)
+# no intercation effect or zygosity
+
+# intercation: zygosity*faminc
+fit=manova(score~zygosity*faminc)
+summary(fit)
+# no intercation effect or zygosity
+
+# intercation: moedu*faedu
+fit=manova(score~moedu*faedu)
+summary(fit)
+# no intercation effect
+
+# intercation: moedu*faminc
+fit=manova(score~moedu*faminc)
+summary(fit)
+# no intercation effect
+
+
+# intercation: faedu*faminc
+fit=manova(score~faedu*faminc)
+summary(fit)
+# no intercation effect
+
+
+# summary: no intercation effect across sex, zygosity, mather education, father education, family income.
+```
+
+```{r}
+#score
+# now we want to see how to use these factors to explain the score: regression
+#ch5 ppt 15 assume all score are from same normal distribution N(mu,sigma)
+twins_mean <- colMeans(twins[,7:11])
+source("http://www.stat.wmich.edu/wang/561/codes/R/ci.R")
+confidence(n=1678,xbar=mean,S=S, conf.region=T,alpha=.05)
+
+sex=as.factor(twins_pair$sex)
+zygosity=as.factor(twins_pair$zygosity)
+moedu=as.factor(twins_pair$moed)
+faedu=as.factor(twins_pair$faed)
+faminc=as.factor(twins_pair$faminc)
+score <- as.matrix(twins_pair[,17:21])
+
+#factor <- data.frame(sex,zygosity,moedu,faedu,faminc)
+fit <- lm(score~sex+zygosity+moedu+faedu+faminc)
+summary(fit)
+# For english score :
+## coefficients in sex, father education, family income  are significant
+## But the Adjust R-squre is low: 0.07
+# For math score: 
+##coefficients in sex, father education, family income  are significant
+## But the Adjust R-squre is low: 0.19
+# For socsci:
+## coefficients in sex, father education, family income  are significant
+## But the Adjust R-squre is low: 0.08
+# For natsci:
+## coefficients in sex, father education, family income  are significant
+## But the Adjust R-squre is low: 0.11
+# For vocab:
+## coefficients in father education, family income  are significant
+## But the Adjust R-squre is low: 0.11
+
+## ??? why  mother education is not significant?
+
+```
+
+```{r}
+# one way anova: twin effect:
+oneway_anova_twineffect <- aov(twins$english~twins$pairnum)
+summary(oneway_anova_twineffect)
+# 
+```
+
+```{r}
+# PCA
+# Why PCA: plot two dimention. data visualization
+library(corrplot)
+corrplot(cor(twins_pair[,17:21]),method="number")
+# all the score have some correlation.
+# scoial science and vocabulary are high correlated.
+# 
+fit <- princomp(twins_pair[,17:21], cor=TRUE)
+summary(fit)
+loadings(fit)
+fit$scores[1:10,]
+plot(fit,type="lines") #indicate 2 component
+
+#reduction data: using correlation matrix
+raw = as.matrix(twins_pair[,17:21])
+xbar = colMeans(raw) #overall mean across all 3 species
+c.raw = t(t(raw)-xbar)
+S1 <- cor(twins_pair[,17:21])
+S1
+#plot the first two principal components
+eg1 = eigen(S1)$vectors[,1:2]
+PC1 = c.raw%*%eg1
+twins_pair$sex_fm[which(twins_pair$sex==1)] <- "m"
+twins_pair$sex_fm[which(twins_pair$sex==2)] <- "f"
+plot(PC1,col=twins_pair$sex, pch=twins_pair$sex_fm, main="PC",ylab="PC2",xlab="PC1")
+
+#plot(PC1,col=twins_pair$zygosity, pch=twins_pair$zygosity, main="PC",ylab="PC2",xlab="PC1")
+
+#plot(PC1,col=twins_pair$faedu, pch=twins_pair$faedu, main="PC",ylab="PC2",xlab="PC1")
+
+#plot(PC1,col=twins_pair$faminc, pch=twins_pair$faminc, main="PC",ylab="PC2",xlab="PC1")
+```
+
+
+
+
